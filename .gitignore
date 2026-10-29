@@ -1,0 +1,9 @@
+*.duckdb
+*.duckdb.wal
+data/staging/
+__pycache__/
+python/__pycache__/
+*.mcpmem
+*.mcpmem-shm
+*.mcpmem-wal
+.DS_Store

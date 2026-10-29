@@ -1,0 +1,2 @@
+rule_id,carrier_id,origin_rate_centre,destination_rate_centre,origin_exchange,destination_exchange,province,service_type,classification,charge_applies,rate_basis,effective_from,effective_to,source_document,source_url,confidence,notes
+example-bell-local,8051,Toronto,Toronto,,,ON,standard_landline,local,false,local_calling_area,2026-01-01,,Bell Canada General Tariff,https://www.bell.ca/styles/common/all_languages/all_regions/pdf/BellBusinessReg.pdf,verified,Replace this example with a tariff-backed rule before production use.
