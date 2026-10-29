@@ -3,6 +3,9 @@ name: Deploy to Cloudflare
 on:
   push:
     branches: [main]
+    # Documentation-only changes do not need a database rebuild and redeploy.
+    paths-ignore:
+      - "**/*.md"
   workflow_dispatch:
 
 concurrency:

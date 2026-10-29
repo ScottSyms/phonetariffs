@@ -183,21 +183,10 @@ WHERE lower(search_text) LIKE '%port hope%';
 ## Cloudflare hosting
 
 The public site runs on Cloudflare: a Worker serves a JSON API, D1 stores the
-data, and the static UI is served from Workers static assets. The DuckDB file
-stays the local source of truth; Cloudflare gets a derived, disposable copy.
+data, and the UI is served from Workers static assets. The DuckDB file stays the
+local source of truth; Cloudflare gets a derived, disposable copy.
 
-```text
-cloudflare/
-├── wrangler.jsonc            Worker, D1 binding, static assets
-├── migrations/0001_schema.sql  D1 schema (flattened dfrp_* and telephone_* tables)
-├── src/                      Worker: router, D1 queries, fuzzy scoring
-├── public/                   Static UI (no bundler)
-├── scripts/seed-local.mjs    Loads exported SQL into D1
-└── test/                     Vitest + Workers pool
-python/export_cloudflare.py   DuckDB -> chunked D1 SQL
-```
-
-### JSON API
+**Live:** <https://phonetariffs.development-publishing.workers.dev>
 
 ```text
 GET /api/meta
@@ -208,78 +197,26 @@ GET /api/property/:property_number
 GET /api/call?origin=&destination=[&carrier_id=][&service_type=][&date=]
 ```
 
-Call rules are carrier-specific: the same route can be local under one carrier's
-tariff and long distance under another's, so `carrier_id` filters the answer.
-Omit it to evaluate every carrier with a rule for the route; the response then
-includes `by_carrier` summaries and results grouped per carrier. Responses mirror
-the Python CLI's JSON. `/api/call` returns `"status": "unknown"` when no rule
-matches — that is not the same as free — and `has_verified_rule: false` when only
-derived candidate rules matched.
+`carrier_id` is optional because tariff rules are carrier-specific; omit it to
+compare every carrier with a rule for the route. Responses mirror the Python CLI,
+and `"status": "unknown"` never means free.
 
-### One-time Cloudflare setup
+Local development:
 
 ```bash
-npx wrangler login
-
-# Create the database, then copy the printed database_id into
-# cloudflare/wrangler.jsonc (d1_databases[0].database_id).
-cd cloudflare
-npx wrangler d1 create phonetariffs
-```
-
-Add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` as GitHub Actions
-secrets. The API token needs D1 edit and Workers scripts edit permissions for
-the account. Until `CLOUDFLARE_API_TOKEN` is set, the workflow's deploy job is
-skipped (the site can still be deployed manually with `npm run deploy`).
-
-### Local development
-
-```bash
-mise install
-mise exec -- python -m pip install -r python/requirements.txt
-
-# Build the local DuckDB file, then export it for D1.
 mise exec -- python python/build_database.py build
 mise exec -- python python/export_cloudflare.py
-
-cd cloudflare
-npm ci
-npm run db:local     # apply migrations + load dist/d1 into local D1
-npm run dev          # http://127.0.0.1:8787
-npm test             # unit + API tests against a fixture database
+cd cloudflare && npm ci && npm run db:local && npm run dev
 ```
 
-`npm run typecheck` regenerates nothing; run `npx wrangler types` after changing
-`wrangler.jsonc` so `worker-configuration.d.ts` matches the bindings.
+Pushing to `main` rebuilds the database, tests the Worker, reloads D1, deploys,
+and smoke-tests the live site. It requires the `CLOUDFLARE_API_TOKEN` and
+`CLOUDFLARE_ACCOUNT_ID` repository secrets; without the token the deploy job is
+skipped.
 
-### Deployment
-
-Pushing to `main` runs `.github/workflows/deploy.yml`, which:
-
-1. builds `phones.duckdb` from the committed XML and CNA CSV,
-2. exports chunked SQL,
-3. typechecks and tests the Worker,
-4. applies D1 migrations and loads data,
-5. deploys the Worker.
-
-Set the repository variable `SITE_URL` (for example
-`https://phonetariffs.example.workers.dev`) to enable the post-deploy smoke test.
-
-### Notes and limitations
-
-- Fuzzy search is ported to TypeScript. It keeps the CLI formula
-  (`0.65 * token coverage + 0.35 * similarity`) but uses a bigram Dice
-  coefficient instead of `difflib.SequenceMatcher`. Scores differ slightly and
-  ties may order differently; tests assert the scoring behaviour, and results
-  were compared against the CLI on a sample of queries.
-- Candidate retrieval uses an FTS5 trigram index (`norm_text`) before reranking
-  in the Worker, so requests never scan the full table.
-- `telephone.calling_rules` contains 65 duplicated `rule_id` values (exchange
-  areas that slug to the same value). D1 keeps the rows but cannot enforce a
-  primary key on `rule_id`; the exporter warns about this on every run.
-- The 129 MB `dfrp-rbif.xml` is stored in Git LFS (see `.gitattributes`), so CI
-  checks out with `lfs: true`. Every workflow run pulls it, which counts against
-  GitHub's LFS bandwidth. It is the main reason clone and build times are high.
+Full documentation — architecture, API reference, data model, operations,
+troubleshooting, and known limitations — is in
+[`cloudflare/README.md`](cloudflare/README.md).
 
 ## Source files
 
