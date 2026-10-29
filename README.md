@@ -205,11 +205,16 @@ GET /api/carriers
 GET /api/office?q=&minimum_score=&limit=
 GET /api/exchange?q=&minimum_score=&limit=
 GET /api/property/:property_number
-GET /api/call?carrier_id=&origin=&destination=&service_type=&date=
+GET /api/call?origin=&destination=[&carrier_id=][&service_type=][&date=]
 ```
 
-Responses mirror the Python CLI's JSON. `/api/call` returns
-`"status": "unknown"` when no rule matches; that is not the same as free.
+Call rules are carrier-specific: the same route can be local under one carrier's
+tariff and long distance under another's, so `carrier_id` filters the answer.
+Omit it to evaluate every carrier with a rule for the route; the response then
+includes `by_carrier` summaries and results grouped per carrier. Responses mirror
+the Python CLI's JSON. `/api/call` returns `"status": "unknown"` when no rule
+matches — that is not the same as free — and `has_verified_rule: false` when only
+derived candidate rules matched.
 
 ### One-time Cloudflare setup
 

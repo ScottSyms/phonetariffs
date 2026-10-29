@@ -160,27 +160,37 @@ export async function propertyTelephone(
 /**
  * Returns matching tariff rules. An empty result means the charge is UNKNOWN,
  * not free; callers must present it that way.
+ *
+ * Rules are carrier-specific: the same route can be local under one carrier's
+ * tariff and long distance under another's. When `carrierId` is null the query
+ * spans every carrier that has a rule for the route, and the caller groups the
+ * results.
  */
 export async function evaluateCall(env: Env, params: CallParams): Promise<Row[]> {
+  const carrierFilter = params.carrierId ? "AND r.carrier_id = ?" : "";
+  const bindings: (string | null)[] = [
+    params.origin,
+    params.destination,
+    params.serviceType,
+    params.onDate,
+    params.onDate,
+  ];
+  if (params.carrierId) bindings.push(params.carrierId);
+
   const { results } = await env.DB.prepare(
-    `SELECT *, CASE WHEN charge_applies THEN 'charge_applies' ELSE 'no_charge' END AS result
-       FROM telephone_calling_rules
-      WHERE carrier_id = ?
-        AND lower(origin_rate_centre) LIKE lower(?) || '%'
-        AND lower(destination_rate_centre) LIKE lower(?) || '%'
-        AND service_type = ?
-        AND effective_from <= ?
-        AND (effective_to IS NULL OR effective_to >= ?)
-      ORDER BY rule_id`,
+    `SELECT r.*, c.legal_name AS carrier_name,
+            CASE WHEN r.charge_applies THEN 'charge_applies' ELSE 'no_charge' END AS result
+       FROM telephone_calling_rules r
+       LEFT JOIN telephone_carriers c ON c.carrier_id = r.carrier_id
+      WHERE lower(r.origin_rate_centre) LIKE lower(?) || '%'
+        AND lower(r.destination_rate_centre) LIKE lower(?) || '%'
+        AND r.service_type = ?
+        AND r.effective_from <= ?
+        AND (r.effective_to IS NULL OR r.effective_to >= ?)
+        ${carrierFilter}
+      ORDER BY r.carrier_id, r.rule_id`,
   )
-    .bind(
-      params.carrierId,
-      params.origin,
-      params.destination,
-      params.serviceType,
-      params.onDate,
-      params.onDate,
-    )
+    .bind(...bindings)
     .all<Row>();
   return results;
 }

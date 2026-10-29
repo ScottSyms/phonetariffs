@@ -190,6 +190,16 @@ button[disabled] {
   font-size: 0.9rem;
 }
 
+.group-title {
+  margin: 1.5rem 0 0;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
 .results {
   display: grid;
   gap: 0.75rem;
@@ -227,8 +237,7 @@ button[disabled] {
 }
 
 .score {
-  display: inline-block;
-  padding: 0.1rem 0.45rem;
+  display: inline-block;  padding: 0.1rem 0.45rem;
   border-radius: 999px;
   background: var(--accent-soft);
   color: var(--accent);

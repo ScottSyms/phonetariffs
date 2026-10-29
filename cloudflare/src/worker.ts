@@ -122,8 +122,9 @@ async function handleProperty(env: Env, propertyNumber: string): Promise<Respons
 }
 
 async function handleCall(env: Env, params: URLSearchParams): Promise<Response> {
-  const carrier = requireText(params, "carrier_id");
-  if (carrier instanceof Response) return carrier;
+  // Carrier is optional: rules are carrier-specific, so omitting it evaluates
+  // every carrier that has a rule for the route and groups the results.
+  const carrier = params.get("carrier_id")?.trim() || null;
   const origin = requireText(params, "origin");
   if (origin instanceof Response) return origin;
   const destination = requireText(params, "destination");
@@ -141,6 +142,38 @@ async function handleCall(env: Env, params: URLSearchParams): Promise<Response> 
     onDate,
   });
 
+  const carriers = new Map<string, { carrier_id: string; carrier_name: string | null; count: number }>();
+  for (const row of results) {
+    const id = String(row.carrier_id);
+    const entry = carriers.get(id) ?? {
+      carrier_id: id,
+      carrier_name: (row.carrier_name as string | null) ?? null,
+      count: 0,
+    };
+    entry.count += 1;
+    carriers.set(id, entry);
+  }
+  const byCarrier = [...carriers.values()].sort(
+    (left, right) => right.count - left.count || left.carrier_id.localeCompare(right.carrier_id),
+  );
+  const hasVerifiedRule = results.some(
+    (row) => typeof row.confidence === "string" && row.confidence !== "derived",
+  );
+
+  let note: string;
+  if (results.length === 0) {
+    note =
+      "An empty result means the charge is unknown, not that the call is free or chargeable. " +
+      "No carrier has a rule covering this route on this date.";
+  } else if (!hasVerifiedRule) {
+    note =
+      "Only derived candidate rules matched. No verified tariff rule covers this route, so treat " +
+      "the classification as a starting point and check the carrier's tariff and local calling area.";
+  } else {
+    note =
+      "Derived or candidate rules should be checked against the subscriber's exact local calling area, carrier, and plan.";
+  }
+
   return json(
     {
       carrier_id: carrier,
@@ -149,13 +182,11 @@ async function handleCall(env: Env, params: URLSearchParams): Promise<Response> 
       service_type: serviceType,
       date: onDate,
       count: results.length,
-      results,
-      // Never let an empty rule set read as "free".
       status: results.length > 0 ? "matched" : "unknown",
-      note:
-        results.length > 0
-          ? "Derived or candidate rules should be checked against the subscriber's exact local calling area, carrier, and plan."
-          : "An empty result means the charge is unknown, not that the call is free or chargeable.",
+      has_verified_rule: hasVerifiedRule,
+      by_carrier: byCarrier,
+      results,
+      note,
     },
     200,
     "public, max-age=300",
@@ -182,7 +213,7 @@ async function route(request: Request, env: Env): Promise<Response> {
         "GET /api/office?q=&minimum_score=&limit=",
         "GET /api/exchange?q=&minimum_score=&limit=",
         "GET /api/property/:property_number",
-        "GET /api/call?carrier_id=&origin=&destination=&service_type=&date=",
+        "GET /api/call?origin=&destination=&carrier_id=&service_type=&date=",
       ],
     });
   }

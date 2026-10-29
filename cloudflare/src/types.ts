@@ -4,7 +4,7 @@ export type Row = Record<string, unknown>;
 export type SearchRow = Row & { norm_text: string; row_id: number };
 
 export interface CallParams {
-  carrierId: string;
+  carrierId: string | null;
   origin: string;
   destination: string;
   serviceType: string;

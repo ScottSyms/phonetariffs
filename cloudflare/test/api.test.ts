@@ -42,11 +42,14 @@ VALUES
   ('bell-on-toronto-ottawa-2026', '8051', 'Toronto', 'Ottawa-Hull', 'ON', 'standard_landline',
    'long_distance', 1, '81+ miles', '2026-01-01', 'derived', 'Bell Long Distance', 'https://www.bell.ca/'),
   ('local-port-hope', '8051', 'Port Hope', 'Port Hope', 'ON', 'standard_landline',
-   'local', 0, 'same exchange', '2026-01-01', 'derived', 'CNA CO Code Status', 'https://www.cnac.ca/');
+   'local', 0, 'same exchange', '2026-01-01', 'derived', 'CNA CO Code Status', 'https://www.cnac.ca/'),
+  ('aliant-on-toronto-ottawa-2026', '8050', 'Toronto', 'Ottawa-Hull', 'ON', 'standard_landline',
+   'long_distance', 1, 'per minute', '2026-01-01', 'reference', 'Bell Aliant Tariff', 'https://bellaliant.bell.ca/');
 
 INSERT INTO telephone_carriers (carrier_id, legal_name, ocn, carrier_type, fixed_line)
 VALUES
   ('8051', 'Bell Canada', '8051', 'incumbent_or_independent_wireline', 1),
+  ('8050', 'Bell Aliant', '8050', 'incumbent_or_independent_wireline', 1),
   ('9999', 'Rogers Wireless', '9999', 'wireless', 0);
 
 INSERT INTO telephone_co_codes (npa, nxx, status, exchange_area, province, company)
@@ -129,22 +132,48 @@ describe("GET /api/property/:number", () => {
 });
 
 describe("GET /api/call", () => {
-  it("returns a matched rule", async () => {
+  it("returns a matched rule for a specific carrier", async () => {
     const { body } = await get(
       "/api/call?carrier_id=8051&origin=Toronto&destination=Ottawa&date=2026-06-01",
     );
     expect(body.status).toBe("matched");
     expect(body.count).toBe(1);
+    expect(body.carrier_id).toBe("8051");
     expect(body.results[0].result).toBe("charge_applies");
     expect(body.results[0].charge_applies).toBe(1);
   });
 
+  it("compares every carrier when carrier_id is omitted", async () => {
+    const { body } = await get(
+      "/api/call?origin=Toronto&destination=Ottawa&date=2026-06-01",
+    );
+    expect(body.status).toBe("matched");
+    expect(body.carrier_id).toBeNull();
+    expect(body.count).toBe(2);
+    expect(body.by_carrier.map((row: { carrier_id: string }) => row.carrier_id)).toEqual([
+      "8050",
+      "8051",
+    ]);
+    expect(body.has_verified_rule).toBe(true);
+    expect(body.results.every((rule: { carrier_name: string }) => rule.carrier_name)).toBe(true);
+  });
+
+  it("flags derived-only matches as unverified", async () => {
+    const { body } = await get(
+      "/api/call?origin=Port%20Hope&destination=Port%20Hope&date=2026-06-01",
+    );
+    expect(body.count).toBe(1);
+    expect(body.has_verified_rule).toBe(false);
+    expect(body.note).toMatch(/Only derived candidate rules matched/);
+  });
+
   it("reports unknown instead of free", async () => {
     const { body } = await get(
-      "/api/call?carrier_id=8051&origin=Toronto&destination=Vancouver&date=2026-06-01",
+      "/api/call?origin=Toronto&destination=Vancouver&date=2026-06-01",
     );
     expect(body.status).toBe("unknown");
     expect(body.count).toBe(0);
+    expect(body.by_carrier).toEqual([]);
     expect(body.note).toMatch(/unknown, not that the call is free/);
   });
 
@@ -157,7 +186,7 @@ describe("GET /api/call", () => {
 
   it("rejects a malformed date", async () => {
     const { status } = await get(
-      "/api/call?carrier_id=8051&origin=Toronto&destination=Ottawa&date=June",
+      "/api/call?origin=Toronto&destination=Ottawa&date=June",
     );
     expect(status).toBe(400);
   });
@@ -168,11 +197,11 @@ describe("GET /api/meta and /api/carriers", () => {
     const { status, body } = await get("/api/meta");
     expect(status).toBe(200);
     expect(body.properties).toBe(1);
-    expect(body.calling_rules).toBe(2);
+    expect(body.calling_rules).toBe(3);
   });
 
   it("lists fixed-line carriers only", async () => {
     const { body } = await get("/api/carriers");
-    expect(body.results.map((row: { carrier_id: string }) => row.carrier_id)).toEqual(["8051"]);
+    expect(body.results.map((row: { carrier_id: string }) => row.carrier_id)).toEqual(["8050", "8051"]);
   });
 });

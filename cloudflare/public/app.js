@@ -257,6 +257,30 @@ function carriers() {
   return carriersPromise;
 }
 
+function ruleCard(rule) {
+  return el(
+    "li",
+    { class: "result" },
+    el("h3", { text: rule.classification === "long_distance" ? "Long distance" : rule.classification || "Rule" }),
+    el(
+      "div",
+      { class: "meta" },
+      el("span", { class: "badge", text: rule.result }),
+      el("span", { class: "badge" + (rule.confidence === "derived" ? " derived" : ""), text: rule.confidence || "unknown confidence" }),
+      el("span", { text: rule.effective_from ? `effective ${rule.effective_from}` : "no effective date" }),
+    ),
+    rule.rate_basis ? el("p", { text: rule.rate_basis }) : null,
+    rule.notes ? el("p", { text: rule.notes }) : null,
+    el(
+      "p",
+      {},
+      rule.source_url
+        ? el("a", { href: rule.source_url, rel: "noopener noreferrer", target: "_blank", text: rule.source_document || "Source document" })
+        : rule.source_document || "No source document",
+    ),
+  );
+}
+
 function renderCall(params) {
   const select = el("select", { name: "carrier_id" }, el("option", { value: "", text: "Loading carriers…" }));
   const origin = el("input", { type: "search", name: "origin", value: params.get("origin") || "", placeholder: "Toronto", required: "required" });
@@ -295,7 +319,10 @@ function renderCall(params) {
 
   carriers()
     .then((rows) => {
-      select.replaceChildren(...rows.map((row) => el("option", { value: row.carrier_id, text: row.legal_name || row.carrier_id })));
+      select.replaceChildren(
+        el("option", { value: "", text: "Any carrier (compare)" }),
+        ...rows.map((row) => el("option", { value: row.carrier_id, text: row.legal_name || row.carrier_id })),
+      );
       const wanted = params.get("carrier_id");
       if (wanted) select.value = wanted;
     })
@@ -304,14 +331,14 @@ function renderCall(params) {
   app.replaceChildren(
     panel(
       "Evaluate a call",
-      "Looks up reviewed tariff rules for a carrier, origin, and destination rate centre. No matching rule means the charge is unknown — not free.",
+      "Looks up reviewed tariff rules for an origin and destination rate centre, across every carrier with a rule or just the one you pick. No matching rule means the charge is unknown — not free.",
       form,
       output,
     ),
   );
 
   const carrierId = params.get("carrier_id");
-  if (!carrierId || !params.get("origin") || !params.get("destination")) return;
+  if (!params.get("origin") || !params.get("destination")) return;
   output.append(el("p", { class: "status", text: "Evaluating…" }));
   api("/api/call", {
     carrier_id: carrierId,
@@ -321,40 +348,33 @@ function renderCall(params) {
     date: params.get("date") || "",
   })
     .then((payload) => {
+      const carrierCount = payload.by_carrier?.length ?? 0;
+      const scope = payload.carrier_id
+        ? ""
+        : ` across ${carrierCount} carrier${carrierCount === 1 ? "" : "s"}`;
       const nodes = [
-        el("p", { class: "status", text: `${payload.count} matching rule${payload.count === 1 ? "" : "s"} for ${payload.origin_rate_centre} → ${payload.destination_rate_centre} on ${payload.date}.` }),
+        el("p", {
+          class: "status",
+          text: `${payload.count} matching rule${payload.count === 1 ? "" : "s"}${scope} for ${payload.origin_rate_centre} → ${payload.destination_rate_centre} on ${payload.date}.`,
+        }),
       ];
       if (payload.results.length === 0) {
         nodes.push(el("p", { class: "notice warn", text: payload.note }));
+      } else if (carrierCount > 1) {
+        for (const group of payload.by_carrier) {
+          const rules = payload.results.filter((rule) => rule.carrier_id === group.carrier_id);
+          nodes.push(
+            el("h3", {
+              class: "group-title",
+              text: `${group.carrier_name || group.carrier_id} · ${rules.length} rule${rules.length === 1 ? "" : "s"}`,
+            }),
+            el("ul", { class: "results" }, ...rules.map(ruleCard)),
+          );
+        }
+        nodes.push(el("p", { class: "notice", text: payload.note }));
       } else {
         nodes.push(
-          el(
-            "ul",
-            { class: "results" },
-            ...payload.results.map((rule) =>
-              el(
-                "li",
-                { class: "result" },
-                el("h3", { text: rule.classification === "long_distance" ? "Long distance" : rule.classification || "Rule" }),
-                el(
-                  "div",
-                  { class: "meta" },
-                  el("span", { class: "badge", text: rule.result }),
-                  el("span", { class: "badge" + (rule.confidence === "derived" ? " derived" : ""), text: rule.confidence || "unknown confidence" }),
-                  el("span", { text: rule.effective_from ? `effective ${rule.effective_from}` : "no effective date" }),
-                ),
-                rule.rate_basis ? el("p", { text: rule.rate_basis }) : null,
-                rule.notes ? el("p", { text: rule.notes }) : null,
-                el(
-                  "p",
-                  {},
-                  rule.source_url
-                    ? el("a", { href: rule.source_url, rel: "noopener noreferrer", target: "_blank", text: rule.source_document || "Source document" })
-                    : rule.source_document || "No source document",
-                ),
-              ),
-            ),
-          ),
+          el("ul", { class: "results" }, ...payload.results.map(ruleCard)),
           el("p", { class: "notice", text: payload.note }),
         );
       }
