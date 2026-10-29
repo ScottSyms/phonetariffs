@@ -1,9 +1,12 @@
 *.duckdb
 *.duckdb.wal
 data/staging/
+dist/
+node_modules/
 __pycache__/
 python/__pycache__/
 *.mcpmem
 *.mcpmem-shm
 *.mcpmem-wal
 .DS_Store
+.wrangler/

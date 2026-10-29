@@ -8,6 +8,7 @@ This project combines Canada's Federal Real Property data with Canadian telephon
 
 - [mise](https://mise.jdx.dev/)
 - Python 3.12.13, managed by `mise.toml`
+- Node.js 22.23.2, managed by `mise.toml` (Cloudflare Worker and tests)
 - DuckDB Python package, installed from `python/requirements.txt`
 - The supplied `dfrp-rbif.xml` file
 
@@ -179,6 +180,101 @@ FROM dfrp.property_search
 WHERE lower(search_text) LIKE '%port hope%';
 ```
 
+## Cloudflare hosting
+
+The public site runs on Cloudflare: a Worker serves a JSON API, D1 stores the
+data, and the static UI is served from Workers static assets. The DuckDB file
+stays the local source of truth; Cloudflare gets a derived, disposable copy.
+
+```text
+cloudflare/
+├── wrangler.jsonc            Worker, D1 binding, static assets
+├── migrations/0001_schema.sql  D1 schema (flattened dfrp_* and telephone_* tables)
+├── src/                      Worker: router, D1 queries, fuzzy scoring
+├── public/                   Static UI (no bundler)
+├── scripts/seed-local.mjs    Loads exported SQL into D1
+└── test/                     Vitest + Workers pool
+python/export_cloudflare.py   DuckDB -> chunked D1 SQL
+```
+
+### JSON API
+
+```text
+GET /api/meta
+GET /api/carriers
+GET /api/office?q=&minimum_score=&limit=
+GET /api/exchange?q=&minimum_score=&limit=
+GET /api/property/:property_number
+GET /api/call?carrier_id=&origin=&destination=&service_type=&date=
+```
+
+Responses mirror the Python CLI's JSON. `/api/call` returns
+`"status": "unknown"` when no rule matches; that is not the same as free.
+
+### One-time Cloudflare setup
+
+```bash
+npx wrangler login
+
+# Create the database, then copy the printed database_id into
+# cloudflare/wrangler.jsonc (d1_databases[0].database_id).
+cd cloudflare
+npx wrangler d1 create phonetariffs
+```
+
+Add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` as GitHub Actions
+secrets. The API token needs D1 edit and Workers scripts edit permissions for
+the account.
+
+### Local development
+
+```bash
+mise install
+mise exec -- python -m pip install -r python/requirements.txt
+
+# Build the local DuckDB file, then export it for D1.
+mise exec -- python python/build_database.py build
+mise exec -- python python/export_cloudflare.py
+
+cd cloudflare
+npm ci
+npm run db:local     # apply migrations + load dist/d1 into local D1
+npm run dev          # http://127.0.0.1:8787
+npm test             # unit + API tests against a fixture database
+```
+
+`npm run typecheck` regenerates nothing; run `npx wrangler types` after changing
+`wrangler.jsonc` so `worker-configuration.d.ts` matches the bindings.
+
+### Deployment
+
+Pushing to `main` runs `.github/workflows/deploy.yml`, which:
+
+1. builds `phones.duckdb` from the committed XML and CNA CSV,
+2. exports chunked SQL,
+3. typechecks and tests the Worker,
+4. applies D1 migrations and loads data,
+5. deploys the Worker.
+
+Set the repository variable `SITE_URL` (for example
+`https://phonetariffs.example.workers.dev`) to enable the post-deploy smoke test.
+
+### Notes and limitations
+
+- Fuzzy search is ported to TypeScript. It keeps the CLI formula
+  (`0.65 * token coverage + 0.35 * similarity`) but uses a bigram Dice
+  coefficient instead of `difflib.SequenceMatcher`. Scores differ slightly and
+  ties may order differently; tests assert the scoring behaviour, and results
+  were compared against the CLI on a sample of queries.
+- Candidate retrieval uses an FTS5 trigram index (`norm_text`) before reranking
+  in the Worker, so requests never scan the full table.
+- `telephone.calling_rules` contains 65 duplicated `rule_id` values (exchange
+  areas that slug to the same value). D1 keeps the rows but cannot enforce a
+  primary key on `rule_id`; the exporter warns about this on every run.
+- The 129 MB `dfrp-rbif.xml` is stored in Git LFS (see `.gitattributes`), so CI
+  checks out with `lfs: true`. Every workflow run pulls it, which counts against
+  GitHub's LFS bandwidth. It is the main reason clone and build times are high.
+
 ## Source files
 
 ```text
@@ -188,8 +284,11 @@ data/raw/cna/COCodeStatus_ALL.zip     CNA source archive
 sql/schema.sql                         DuckDB schema and views
 python/phone_db.py                     Python data and query library
 python/build_database.py               Python CLI
+python/export_cloudflare.py            DuckDB to Cloudflare D1 exporter
 src/PhoneDatabase.psm1                 PowerShell module
 src/Build-PhoneDatabase.ps1            PowerShell build script
+cloudflare/                            Cloudflare Worker, D1 schema, and UI
+.github/workflows/deploy.yml           Build, test, and deploy on push to main
 ```
 
 ## Data limitations

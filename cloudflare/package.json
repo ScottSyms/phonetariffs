@@ -1,0 +1,20 @@
+{
+  "name": "phonetariffs-cloudflare",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:migrate:local": "wrangler d1 migrations apply phonetariffs --local",
+    "db:seed:local": "node scripts/seed-local.mjs",
+    "db:local": "npm run db:migrate:local && npm run db:seed:local"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.4.11",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.4",
+    "wrangler": "^4.156.0"
+  }
+}

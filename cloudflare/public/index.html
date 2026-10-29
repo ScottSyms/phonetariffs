@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Canadian Telephone &amp; Federal Property Database</title>
+    <meta
+      name="description"
+      content="Search Canadian federal properties, CNA exchange assignments, and reviewed telephone tariff rules."
+    />
+    <link rel="stylesheet" href="/style.css" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☎</text></svg>" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <p class="eyebrow">Open data · Canada</p>
+        <h1>Telephone &amp; Federal Property Database</h1>
+        <p class="lede">
+          Federal real property, NPA/NXX exchange assignments, and reviewed tariff
+          rules in one searchable database.
+        </p>
+        <nav class="tabs" aria-label="Sections">
+          <a href="#/offices" data-tab="offices">Federal offices</a>
+          <a href="#/exchanges" data-tab="exchanges">Exchanges</a>
+          <a href="#/property" data-tab="property">Property lookup</a>
+          <a href="#/call" data-tab="call">Call evaluation</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap" id="app" aria-live="polite"></main>
+
+    <footer class="site-footer">
+      <div class="wrap">
+        <p>
+          An NPA/NXX identifies an exchange prefix, not an individual number.
+          Fuzzy results are candidates, not authoritative assignments. Local,
+          toll, and long-distance status depends on the carrier, rate centre,
+          tariff, and effective date.
+        </p>
+        <p>
+          <a href="/api">JSON API</a> ·
+          <a href="https://github.com/ScottSyms/phonetariffs">Source</a>
+        </p>
+      </div>
+    </footer>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
