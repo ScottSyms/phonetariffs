@@ -224,7 +224,8 @@ npx wrangler d1 create phonetariffs
 
 Add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` as GitHub Actions
 secrets. The API token needs D1 edit and Workers scripts edit permissions for
-the account.
+the account. Until `CLOUDFLARE_API_TOKEN` is set, the workflow's deploy job is
+skipped (the site can still be deployed manually with `npm run deploy`).
 
 ### Local development
 
